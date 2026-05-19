@@ -103,6 +103,103 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
     return res.rows;
   }
 
+  /**
+   * Count rules currently stored in the DB for a given domain. Used by the
+   * seed-on-first-boot path to skip when data already exists.
+   */
+  async countRulesByDomain(domain: string): Promise<number> {
+    if (!this._available) return 0;
+    if (this.driver === 'sqlite') {
+      const row = this.sqlite
+        .prepare('SELECT COUNT(*) AS c FROM rules WHERE domain = ?')
+        .get(domain) as { c: number };
+      return row?.c ?? 0;
+    }
+    const res = await this.pg!.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM rules WHERE domain = $1',
+      [domain],
+    );
+    return Number(res.rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Bulk insert rule rows. Used by the file-seed path. Conflicts on rule_id
+   * are IGNORED — first writer wins so any pre-existing rows (Admin edits)
+   * are never clobbered. Returns the number of rows actually inserted.
+   */
+  async bulkInsertRules(
+    rules: Array<{
+      rule_id: string;
+      domain: string;
+      locale: string;
+      io_type: 'input' | 'output' | 'both';
+      category: string;
+      sub_category: string | null;
+      severity: string;
+      priority: number;
+      action: string;
+      pattern_bundle: unknown;
+      message_template: unknown;
+      regulation_tags: string[];
+      examples_positive: string[];
+      examples_negative: string[];
+      enabled: boolean;
+      version: string;
+    }>,
+    source: 'file' | 'admin' | 'csv' = 'file',
+  ): Promise<number> {
+    if (!this._available || rules.length === 0) return 0;
+    let inserted = 0;
+    if (this.driver === 'sqlite') {
+      const stmt = this.sqlite.prepare(
+        `INSERT OR IGNORE INTO rules (
+           rule_id, domain, locale, io_type, category, sub_category,
+           severity, priority, action,
+           pattern_bundle, message_template, regulation_tags,
+           examples_positive, examples_negative, enabled, version, source
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      );
+      const tx = this.sqlite.transaction((rows: typeof rules) => {
+        for (const r of rows) {
+          const info = stmt.run(
+            r.rule_id, r.domain, r.locale, r.io_type, r.category, r.sub_category,
+            r.severity, r.priority, r.action,
+            JSON.stringify(r.pattern_bundle ?? {}),
+            JSON.stringify(r.message_template ?? {}),
+            JSON.stringify(r.regulation_tags ?? []),
+            JSON.stringify(r.examples_positive ?? []),
+            JSON.stringify(r.examples_negative ?? []),
+            r.enabled ? 1 : 0, r.version, source,
+          );
+          if (info.changes > 0) inserted++;
+        }
+      });
+      tx(rules);
+      return inserted;
+    }
+    for (const r of rules) {
+      const res = await this.pg!.query(
+        `INSERT INTO rules (
+           rule_id, domain, locale, io_type, category, sub_category,
+           severity, priority, action,
+           pattern_bundle, message_template, regulation_tags,
+           examples_positive, examples_negative, enabled, version, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         ON CONFLICT (rule_id) DO NOTHING`,
+        [
+          r.rule_id, r.domain, r.locale, r.io_type, r.category, r.sub_category,
+          r.severity, r.priority, r.action,
+          r.pattern_bundle ?? {}, r.message_template ?? {},
+          r.regulation_tags ?? [],
+          r.examples_positive ?? [], r.examples_negative ?? [],
+          r.enabled, r.version, source,
+        ],
+      );
+      inserted += res.rowCount ?? 0;
+    }
+    return inserted;
+  }
+
   async listAllRules(): Promise<Array<{
     rule_id: string;
     domain: string;
