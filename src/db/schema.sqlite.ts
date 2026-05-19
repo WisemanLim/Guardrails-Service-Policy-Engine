@@ -43,6 +43,30 @@ CREATE TABLE IF NOT EXISTS whitelists (
   score_adjustment REAL NOT NULL DEFAULT -0.1
 );
 
+CREATE TABLE IF NOT EXISTS rules (
+  rule_id           TEXT PRIMARY KEY,
+  domain            TEXT NOT NULL,
+  locale            TEXT NOT NULL,
+  io_type           TEXT NOT NULL CHECK (io_type IN ('input','output','both')),
+  category          TEXT NOT NULL,
+  sub_category      TEXT,
+  severity          TEXT NOT NULL CHECK (severity IN ('low','medium','high','critical')),
+  priority          INTEGER NOT NULL DEFAULT 100,
+  action            TEXT NOT NULL,
+  pattern_bundle    TEXT NOT NULL DEFAULT '{}',
+  message_template  TEXT NOT NULL DEFAULT '{}',
+  regulation_tags   TEXT NOT NULL DEFAULT '[]',
+  examples_positive TEXT NOT NULL DEFAULT '[]',
+  examples_negative TEXT NOT NULL DEFAULT '[]',
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  version           TEXT NOT NULL DEFAULT '1.0.0',
+  source            TEXT NOT NULL DEFAULT 'admin'
+                     CHECK (source IN ('file','admin','csv')),
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_rules_domain_locale_io ON rules(domain, locale, io_type) WHERE enabled = 1;
+
 CREATE TABLE IF NOT EXISTS policy_versions (
   id         TEXT PRIMARY KEY,
   domain     TEXT NOT NULL,

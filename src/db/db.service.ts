@@ -103,6 +103,77 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
     return res.rows;
   }
 
+  async listAllRules(): Promise<Array<{
+    rule_id: string;
+    domain: string;
+    locale: string;
+    io_type: 'input' | 'output' | 'both';
+    category: string;
+    sub_category: string | null;
+    severity: string;
+    priority: number;
+    action: string;
+    pattern_bundle: unknown;
+    message_template: unknown;
+    regulation_tags: string[];
+    examples_positive: string[];
+    examples_negative: string[];
+    enabled: boolean;
+    version: string;
+  }>> {
+    if (!this._available) return [];
+    if (this.driver === 'sqlite') {
+      const rows = this.sqlite.prepare('SELECT * FROM rules WHERE enabled = 1').all() as Array<{
+        rule_id: string;
+        domain: string;
+        locale: string;
+        io_type: 'input' | 'output' | 'both';
+        category: string;
+        sub_category: string | null;
+        severity: string;
+        priority: number;
+        action: string;
+        pattern_bundle: string;
+        message_template: string;
+        regulation_tags: string;
+        examples_positive: string;
+        examples_negative: string;
+        enabled: number;
+        version: string;
+      }>;
+      return rows.map((r) => ({
+        ...r,
+        enabled: !!r.enabled,
+        pattern_bundle: r.pattern_bundle ? JSON.parse(r.pattern_bundle) : {},
+        message_template: r.message_template ? JSON.parse(r.message_template) : {},
+        regulation_tags: r.regulation_tags ? JSON.parse(r.regulation_tags) : [],
+        examples_positive: r.examples_positive ? JSON.parse(r.examples_positive) : [],
+        examples_negative: r.examples_negative ? JSON.parse(r.examples_negative) : [],
+      }));
+    }
+    const res = await this.pg!.query(
+      'SELECT rule_id, domain, locale, io_type, category, sub_category, severity, priority, action, pattern_bundle, message_template, regulation_tags, examples_positive, examples_negative, enabled, version FROM rules WHERE enabled = TRUE',
+    );
+    return res.rows as unknown as Array<{
+      rule_id: string;
+      domain: string;
+      locale: string;
+      io_type: 'input' | 'output' | 'both';
+      category: string;
+      sub_category: string | null;
+      severity: string;
+      priority: number;
+      action: string;
+      pattern_bundle: unknown;
+      message_template: unknown;
+      regulation_tags: string[];
+      examples_positive: string[];
+      examples_negative: string[];
+      enabled: boolean;
+      version: string;
+    }>;
+  }
+
   async listWhitelist(domain: string, locale: string): Promise<WhitelistRow[]> {
     if (!this._available) return [];
     if (this.driver === 'sqlite') {
