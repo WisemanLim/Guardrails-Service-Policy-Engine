@@ -17,5 +17,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/policies ./policies
 # Local SQLite file is written here when DB_DRIVER=sqlite.
 RUN mkdir -p /app/var
-EXPOSE 8082
+# Policy listener + Redact tier listener.
+EXPOSE 8082 8085
 CMD ["node", "dist/main.js"]
